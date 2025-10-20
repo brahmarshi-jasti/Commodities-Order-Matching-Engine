@@ -5,6 +5,7 @@
 *.ear
 target/
 *.log
+logs/
 
 # Maven
 .mvn/

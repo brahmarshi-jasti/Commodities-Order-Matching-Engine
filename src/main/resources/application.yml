@@ -1,0 +1,98 @@
+spring:
+  application:
+    name: matching-engine
+  
+  # Database Configuration
+  datasource:
+    url: jdbc:h2:mem:matchingdb
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.H2Dialect
+  
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+  
+  # WebSocket Configuration
+  websocket:
+    allowed-origins: "*"
+    endpoint: /ws
+  
+  # Actuator Configuration
+  actuator:
+    endpoints:
+      web:
+        exposure:
+          include: health,info,metrics,prometheus
+        base-path: /actuator
+    metrics:
+      export:
+        prometheus:
+          enabled: true
+
+# Matching Engine Configuration
+matching-engine:
+  # Disruptor Configuration
+  disruptor:
+    ring-buffer-size: 65536
+    wait-strategy: blocking # blocking, sleeping, yielding, busy-spin
+    producer-type: multi # single, multi
+  
+  # Order Book Configuration
+  order-book:
+    initial-capacity: 1000
+    max-depth: 100
+  
+  # Performance Tuning
+  performance:
+    target-latency-micros: 100
+    throughput-target: 50000
+  
+  # Monitoring
+  monitoring:
+    enabled: true
+    metrics-interval-seconds: 5
+
+# Logging Configuration
+logging:
+  level:
+    root: INFO
+    com.commodities.matching: DEBUG
+    com.lmax.disruptor: WARN
+  pattern:
+    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+  file:
+    name: logs/matching-engine.log
+    max-size: 100MB
+    max-history: 30
+
+# Server Configuration
+server:
+  port: 8080
+  compression:
+    enabled: true
+    mime-types: application/json,application/xml,text/html,text/xml,text/plain
+
+# Management endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}
+  health:
+    defaults:
+      enabled: true
