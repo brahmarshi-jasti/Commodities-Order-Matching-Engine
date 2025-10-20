@@ -1,0 +1,124 @@
+{
+  "dashboard": {
+    "title": "Commodities Matching Engine - Production Dashboard",
+    "tags": ["matching-engine", "commodities", "trading"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Order Matching Latency (µs)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "matching_engine_avg_latency_micros",
+            "legendFormat": "Avg Latency"
+          },
+          {
+            "expr": "histogram_quantile(0.99, matching_engine_processing_time_nanos)",
+            "legendFormat": "P99 Latency"
+          }
+        ],
+        "yaxes": [
+          {
+            "label": "Latency (µs)",
+            "format": "µs"
+          }
+        ],
+        "alert": {
+          "name": "High Latency Alert",
+          "conditions": [
+            {
+              "evaluator": {
+                "params": [100],
+                "type": "gt"
+              },
+              "query": {
+                "params": ["A", "5m", "now"]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": 2,
+        "title": "Order Throughput",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(matching_engine_total_orders[1m]) * 60",
+            "legendFormat": "Orders/min"
+          },
+          {
+            "expr": "rate(matching_engine_total_trades[1m]) * 60",
+            "legendFormat": "Trades/min"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Fill Rate by Commodity",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "(matching_engine_fills_complete / (matching_engine_fills_complete + matching_engine_fills_partial)) * 100",
+            "legendFormat": "{{commodity}}"
+          }
+        ],
+        "yaxes": [
+          {
+            "label": "Fill Rate (%)",
+            "format": "percent",
+            "max": 100,
+            "min": 0
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Average Slippage",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "matching_engine_avg_slippage",
+            "legendFormat": "{{commodity}}"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "System Metrics",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "process_cpu_usage",
+            "legendFormat": "CPU Usage"
+          },
+          {
+            "expr": "jvm_memory_used_bytes / jvm_memory_max_bytes * 100",
+            "legendFormat": "Memory Usage %"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "Order Book Depth",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "matching_engine_orderbook_bids",
+            "legendFormat": "Bids - {{commodity}}"
+          },
+          {
+            "expr": "matching_engine_orderbook_asks",
+            "legendFormat": "Asks - {{commodity}}"
+          }
+        ]
+      }
+    ],
+    "refresh": "5s",
+    "time": {
+      "from": "now-15m",
+      "to": "now"
+    }
+  }
+}

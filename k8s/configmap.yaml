@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: matching-engine-config
+data:
+  application.properties: |
+    server.port=8080
+    spring.application.name=matching-engine
+    
+    # Kafka Configuration
+    spring.kafka.bootstrap-servers=${KAFKA_BOOTSTRAP_SERVERS:kafka-service:9092}
+    spring.kafka.producer.key-serializer=org.apache.kafka.common.serialization.StringSerializer
+    spring.kafka.producer.value-serializer=org.apache.kafka.common.serialization.StringSerializer
+    spring.kafka.producer.acks=all
+    spring.kafka.producer.compression-type=lz4
+    
+    # Actuator
+    management.endpoints.web.exposure.include=health,metrics,prometheus
+    management.metrics.export.prometheus.enabled=true
+    management.server.port=8081
+    
+    # Logging
+    logging.level.root=INFO
+    logging.level.com.commodities=DEBUG

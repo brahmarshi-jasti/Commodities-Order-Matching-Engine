@@ -1,0 +1,24 @@
+# Kafka Topics for Matching Engine
+
+## Order Topics
+orders.crude_oil
+orders.gold
+orders.silver
+orders.copper
+orders.natural_gas
+
+## Trade Topics
+trades.crude_oil
+trades.gold
+trades.silver
+trades.copper
+trades.natural_gas
+
+## Metrics Topics
+metrics.engine
+metrics.latency
+metrics.throughput
+
+## Create topics command:
+kafka-topics.sh --create --topic orders.crude_oil --bootstrap-server localhost:9092 --partitions 3 --replication-factor 1
+kafka-topics.sh --create --topic trades.crude_oil --bootstrap-server localhost:9092 --partitions 3 --replication-factor 1
