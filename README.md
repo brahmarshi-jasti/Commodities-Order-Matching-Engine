@@ -10,6 +10,11 @@ A high-performance commodities order matching engine designed for sub-100 micros
 - **Multi-Commodity Support**: Oil, Gold, Silver, Copper, and Natural Gas
 - **Production Ready**: Kubernetes deployment configs with auto-scaling
 - **Comprehensive Monitoring**: Prometheus metrics and Grafana dashboards
+- **Database Persistence**: H2/PostgreSQL support for trade history
+- **API Documentation**: Interactive Swagger/OpenAPI documentation
+- **Health Checks**: Spring Boot Actuator with custom health indicators
+- **Error Handling**: Global exception handling and validation
+- **Comprehensive Testing**: Unit and integration tests with JUnit 5
 
 ## Architecture
 
@@ -101,11 +106,63 @@ kubectl get pods -l app=matching-engine
 ### Metrics
 - `GET /api/metrics` - Engine performance metrics
 - `GET /actuator/prometheus` - Prometheus metrics export
+- `GET /actuator/health` - Health check endpoint
+- `GET /actuator/info` - Application information
 
 ### WebSocket
 - `/ws` - WebSocket endpoint for real-time updates
 - `/topic/trades` - Trade stream
 - `/topic/orders` - Order stream
+
+### API Documentation
+- `GET /swagger-ui.html` - Interactive API documentation
+- `GET /v3/api-docs` - OpenAPI JSON specification
+
+### Database Console (Development)
+- `GET /h2-console` - H2 database console (in-memory database)
+
+## API Examples
+
+### Submit a Market Buy Order
+```bash
+curl -X POST http://localhost:8080/api/orders \
+  -H "Content-Type: application/json" \
+  -d '{
+    "commodity": "OIL",
+    "side": "BUY",
+    "type": "MARKET",
+    "price": 0,
+    "quantity": 100
+  }'
+```
+
+### Submit a Limit Sell Order
+```bash
+curl -X POST http://localhost:8080/api/orders \
+  -H "Content-Type: application/json" \
+  -d '{
+    "commodity": "GOLD",
+    "side": "SELL",
+    "type": "LIMIT",
+    "price": 1850.50,
+    "quantity": 10
+  }'
+```
+
+### Get Order Book for Gold
+```bash
+curl http://localhost:8080/api/orderbook/GOLD
+```
+
+### Get Performance Metrics
+```bash
+curl http://localhost:8080/api/metrics
+```
+
+### Check Application Health
+```bash
+curl http://localhost:8080/actuator/health
+```
 
 ## Monitoring
 
@@ -125,10 +182,114 @@ Import the dashboard from `monitoring/grafana-dashboard.json` to visualize:
 ## Technology Stack
 
 - **Backend**: Java 17, Spring Boot 3.1.5, LMAX Disruptor
-- **Frontend**: React 18, TypeScript, Vite, Recharts
+- **Frontend**: React 18, TypeScript, Vite, Recharts, TailwindCSS
+- **Database**: H2 (development), PostgreSQL (production ready)
+- **API Documentation**: SpringDoc OpenAPI 3 (Swagger)
+- **Testing**: JUnit 5, Mockito, AssertJ
 - **Streaming**: Apache Kafka, Apache Flink
-- **Monitoring**: Prometheus, Grafana
+- **Monitoring**: Prometheus, Grafana, Spring Boot Actuator
 - **Orchestration**: Kubernetes, Docker
+
+## Testing
+
+### Run Unit Tests
+```bash
+mvn test
+```
+
+### Run Tests with Coverage
+```bash
+mvn test jacoco:report
+```
+
+### Run Integration Tests
+```bash
+mvn verify
+```
+
+### Test Coverage Report
+After running tests with coverage, view the report at:
+`target/site/jacoco/index.html`
+
+## Development Guide
+
+### Prerequisites
+- Java 17 or higher
+- Maven 3.6+
+- Node.js 18+ and npm (for frontend)
+- Docker and Docker Compose (optional, for full stack)
+
+### Environment Variables
+```bash
+# Backend Configuration
+SPRING_PROFILES_ACTIVE=development
+SERVER_PORT=8080
+
+# Database Configuration (Optional - defaults to H2)
+SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/matchingdb
+SPRING_DATASOURCE_USERNAME=postgres
+SPRING_DATASOURCE_PASSWORD=password
+```
+
+### Logging
+Logs are written to:
+- Console (stdout)
+- File: `logs/matching-engine.log`
+
+Log levels can be configured in `application.yml`:
+```yaml
+logging:
+  level:
+    root: INFO
+    com.commodities.matching: DEBUG
+```
+
+## Performance Tuning
+
+### JVM Options for Production
+```bash
+java -Xms4G -Xmx4G \
+  -XX:+UseG1GC \
+  -XX:MaxGCPauseMillis=10 \
+  -XX:+UseStringDeduplication \
+  -jar matching-engine.jar
+```
+
+### Disruptor Configuration
+Adjust ring buffer size in `application.yml`:
+```yaml
+matching-engine:
+  disruptor:
+    ring-buffer-size: 65536  # Must be power of 2
+    wait-strategy: blocking  # Options: blocking, sleeping, yielding, busy-spin
+```
+
+## Troubleshooting
+
+### Connection Issues
+- Ensure backend is running on port 8080
+- Check CORS configuration in `CorsConfig.java`
+- Verify WebSocket connection at `/ws`
+
+### High Latency
+- Check system load and CPU usage
+- Review GC logs for long pauses
+- Increase ring buffer size if needed
+- Consider using busy-spin wait strategy for lowest latency
+
+### Database Issues
+- H2 console: http://localhost:8080/h2-console
+- JDBC URL: `jdbc:h2:mem:matchingdb`
+- Username: `sa`, Password: (empty)
+
+## Contributing
+
+Contributions are welcome! Please:
+1. Fork the repository
+2. Create a feature branch
+3. Add tests for new functionality
+4. Ensure all tests pass
+5. Submit a pull request
 
 ## License
 
