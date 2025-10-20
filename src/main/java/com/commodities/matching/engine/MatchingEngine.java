@@ -5,9 +5,11 @@ import com.commodities.matching.metrics.MetricsCollector;
 import com.lmax.disruptor.*;
 import com.lmax.disruptor.dsl.Disruptor;
 import com.lmax.disruptor.dsl.ProducerType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import javax.annotation.PostConstruct;
-import javax.annotation.PreDestroy;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
@@ -15,6 +17,7 @@ import java.util.function.Consumer;
 
 @Service
 public class MatchingEngine {
+    private static final Logger logger = LoggerFactory.getLogger(MatchingEngine.class);
     private static final int RING_BUFFER_SIZE = 1024 * 64;
     private final Map<Commodity, OrderBook> orderBooks = new ConcurrentHashMap<>();
     private final AtomicLong tradeIdGenerator = new AtomicLong(1);
@@ -30,43 +33,68 @@ public class MatchingEngine {
         for (Commodity commodity : Commodity.values()) {
             orderBooks.put(commodity, new OrderBook(commodity));
         }
+        logger.info("MatchingEngine initialized with {} commodity order books", Commodity.values().length);
     }
 
     @PostConstruct
     public void init() {
-        ThreadFactory threadFactory = r -> {
-            Thread t = new Thread(r);
-            t.setName("matching-engine");
-            t.setDaemon(true);
-            return t;
-        };
+        try {
+            logger.info("Initializing LMAX Disruptor with ring buffer size: {}", RING_BUFFER_SIZE);
+            ThreadFactory threadFactory = r -> {
+                Thread t = new Thread(r);
+                t.setName("matching-engine");
+                t.setDaemon(true);
+                return t;
+            };
 
-        disruptor = new Disruptor<>(
-            OrderEvent::new,
-            RING_BUFFER_SIZE,
-            threadFactory,
-            ProducerType.MULTI,
-            new BlockingWaitStrategy()
-        );
+            disruptor = new Disruptor<>(
+                OrderEvent::new,
+                RING_BUFFER_SIZE,
+                threadFactory,
+                ProducerType.MULTI,
+                new BlockingWaitStrategy()
+            );
 
-        disruptor.handleEventsWith(this::handleOrderEvent);
-        disruptor.start();
-        ringBuffer = disruptor.getRingBuffer();
+            disruptor.handleEventsWith(this::handleOrderEvent);
+            disruptor.start();
+            ringBuffer = disruptor.getRingBuffer();
+            logger.info("MatchingEngine started successfully");
+        } catch (Exception e) {
+            logger.error("Failed to initialize MatchingEngine", e);
+            throw new RuntimeException("MatchingEngine initialization failed", e);
+        }
     }
 
     @PreDestroy
     public void shutdown() {
-        if (disruptor != null) {
-            disruptor.shutdown();
+        try {
+            logger.info("Shutting down MatchingEngine...");
+            if (disruptor != null) {
+                disruptor.shutdown();
+                logger.info("MatchingEngine shutdown completed");
+            }
+        } catch (Exception e) {
+            logger.error("Error during MatchingEngine shutdown", e);
         }
     }
 
     public void submitOrder(Order order) {
+        if (order == null) {
+            logger.warn("Attempted to submit null order");
+            throw new IllegalArgumentException("Order cannot be null");
+        }
+        
         long sequence = ringBuffer.next();
         try {
             OrderEvent event = ringBuffer.get(sequence);
             event.order = order;
             event.submissionTime = System.nanoTime();
+            logger.debug("Order submitted: {} {} {} @ {} qty:{}", 
+                order.getOrderId(), order.getSide(), order.getCommodity(), 
+                order.getPrice(), order.getQuantity());
+        } catch (Exception e) {
+            logger.error("Error submitting order: {}", order.getOrderId(), e);
+            throw e;
         } finally {
             ringBuffer.publish(sequence);
         }
@@ -76,25 +104,40 @@ public class MatchingEngine {
         long startTime = System.nanoTime();
         Order order = event.order;
         
-        metricsCollector.recordOrderReceived(order.getCommodity());
-        notifyOrderListeners(order);
+        try {
+            metricsCollector.recordOrderReceived(order.getCommodity());
+            notifyOrderListeners(order);
 
-        OrderBook orderBook = orderBooks.get(order.getCommodity());
-        
-        if (order.getType() == OrderType.MARKET) {
-            matchMarketOrder(order, orderBook, startTime);
-        } else {
-            matchLimitOrder(order, orderBook, startTime);
+            OrderBook orderBook = orderBooks.get(order.getCommodity());
+            
+            if (order.getType() == OrderType.MARKET) {
+                matchMarketOrder(order, orderBook, startTime);
+            } else {
+                matchLimitOrder(order, orderBook, startTime);
+            }
+
+            long processingTime = System.nanoTime() - startTime;
+            metricsCollector.recordOrderProcessingTime(processingTime);
+            
+            if (logger.isDebugEnabled()) {
+                logger.debug("Order {} processed in {} ns", order.getOrderId(), processingTime);
+            }
+        } catch (Exception e) {
+            logger.error("Error processing order: {}", order.getOrderId(), e);
         }
-
-        long processingTime = System.nanoTime() - startTime;
-        metricsCollector.recordOrderProcessingTime(processingTime);
     }
 
     private void matchMarketOrder(Order order, OrderBook orderBook, long startTime) {
-        PriorityQueue<Order> oppositeBook = order.getSide() == OrderSide.BUY 
-            ? new PriorityQueue<>(orderBook.getSellOrders(100), Comparator.comparingDouble(Order::getPrice))
-            : new PriorityQueue<>(orderBook.getBuyOrders(100), Comparator.comparingDouble(Order::getPrice).reversed());
+        Comparator<Order> comparator = order.getSide() == OrderSide.BUY 
+            ? Comparator.comparingDouble(Order::getPrice)
+            : Comparator.comparingDouble(Order::getPrice).reversed();
+        
+        List<Order> orders = order.getSide() == OrderSide.BUY 
+            ? orderBook.getSellOrders(100)
+            : orderBook.getBuyOrders(100);
+        
+        PriorityQueue<Order> oppositeBook = new PriorityQueue<>(comparator);
+        oppositeBook.addAll(orders);
 
         while (!oppositeBook.isEmpty() && order.getRemainingQuantity() > 0) {
             Order counterOrder = oppositeBook.poll();
@@ -155,6 +198,12 @@ public class MatchingEngine {
         aggressiveOrder.setRemainingQuantity(aggressiveOrder.getRemainingQuantity() - tradeQuantity);
         passiveOrder.setRemainingQuantity(passiveOrder.getRemainingQuantity() - tradeQuantity);
 
+        OrderBook orderBook = orderBooks.get(aggressiveOrder.getCommodity());
+        
+        if (passiveOrder.isFilled()) {
+            orderBook.removeOrder(passiveOrder.getOrderId());
+        }
+
         long processingTime = System.nanoTime() - startTime;
         
         Trade trade = new Trade(
@@ -170,6 +219,9 @@ public class MatchingEngine {
         double slippage = Math.abs(aggressiveOrder.getPrice() - tradePrice);
         metricsCollector.recordTrade(trade, slippage);
         notifyTradeListeners(trade);
+        
+        logger.debug("Trade executed: {} - {} @ {} qty:{} (slippage: {})", 
+            trade.getTradeId(), aggressiveOrder.getCommodity(), tradePrice, tradeQuantity, slippage);
     }
 
     public void addTradeListener(Consumer<Trade> listener) {
@@ -185,7 +237,7 @@ public class MatchingEngine {
             try {
                 listener.accept(trade);
             } catch (Exception e) {
-                e.printStackTrace();
+                logger.error("Error notifying trade listener for trade: {}", trade.getTradeId(), e);
             }
         }
     }
@@ -195,7 +247,7 @@ public class MatchingEngine {
             try {
                 listener.accept(order);
             } catch (Exception e) {
-                e.printStackTrace();
+                logger.error("Error notifying order listener for order: {}", order.getOrderId(), e);
             }
         }
     }
