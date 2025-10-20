@@ -57,17 +57,45 @@ public class OrderBook {
     }
 
     public List<Order> getBuyOrders(int limit) {
-        return new ArrayList<>(buyOrders).stream()
-            .filter(o -> !o.isFilled())
-            .limit(limit)
-            .toList();
+        List<Order> orders = new ArrayList<>();
+        PriorityBlockingQueue<Order> tempQueue = new PriorityBlockingQueue<>(
+            Math.max(buyOrders.size(), 1),
+            buyOrders.comparator()
+        );
+        tempQueue.addAll(buyOrders);
+        
+        while (!tempQueue.isEmpty() && orders.size() < limit) {
+            Order order = tempQueue.poll();
+            if (!order.isFilled()) {
+                orders.add(order);
+            }
+        }
+        return orders;
     }
 
     public List<Order> getSellOrders(int limit) {
-        return new ArrayList<>(sellOrders).stream()
-            .filter(o -> !o.isFilled())
-            .limit(limit)
-            .toList();
+        List<Order> orders = new ArrayList<>();
+        PriorityBlockingQueue<Order> tempQueue = new PriorityBlockingQueue<>(
+            Math.max(sellOrders.size(), 1),
+            sellOrders.comparator()
+        );
+        tempQueue.addAll(sellOrders);
+        
+        while (!tempQueue.isEmpty() && orders.size() < limit) {
+            Order order = tempQueue.poll();
+            if (!order.isFilled()) {
+                orders.add(order);
+            }
+        }
+        return orders;
+    }
+    
+    public PriorityBlockingQueue<Order> getBuyQueue() {
+        return buyOrders;
+    }
+    
+    public PriorityBlockingQueue<Order> getSellQueue() {
+        return sellOrders;
     }
 
     public Commodity getCommodity() {
